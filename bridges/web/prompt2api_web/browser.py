@@ -45,6 +45,34 @@ async def page_problem(page):
             raise BridgeError(message, code, status)
 
 
+async def visible_editable(locator):
+    matches = []
+    for candidate in await locator.all():
+        if await candidate.is_visible() and await candidate.is_editable():
+            matches.append(candidate)
+    return matches
+
+
+async def find_composer(page, spec):
+    matches = await visible_editable(page.locator(spec.composer))
+    if matches:
+        return matches[0]
+    if spec.name == "grok":
+        matches = await visible_editable(
+            page.get_by_role("textbox", name="Ask Grok anything", exact=True)
+        )
+        if matches:
+            return matches[0]
+        # On Grok's landing page only, tolerate a changed accessible label when
+        # there is exactly one visible editable textarea. Never guess between inputs.
+        location = urlparse(page.url)
+        if location.hostname == "grok.com" and location.path == "/":
+            matches = await visible_editable(page.locator("textarea"))
+            if len(matches) == 1:
+                return matches[0]
+    return None
+
+
 class BrowserProvider:
     def __init__(self, spec: ProviderSpec, settings: BrowserSettings):
         self.spec, self.settings = spec, settings
@@ -52,6 +80,8 @@ class BrowserProvider:
         self.context = None
         self.playwright = None
         self.stage = "idle"
+        self.failed_page = None
+        self.diagnostics = None
 
     async def start(self):
         if self.context:
@@ -83,6 +113,7 @@ class BrowserProvider:
                 await self.context.close()
         finally:
             self.context = None
+            self.failed_page = None
             if self.playwright:
                 await self.playwright.stop()
                 self.playwright = None
@@ -99,10 +130,16 @@ class BrowserProvider:
                 429,
             )
         async with self.lock:
+            self.diagnostics = None
             self.stage = "starting_browser"
             await self.start()
+            if self.failed_page is not None:
+                if not self.failed_page.is_closed():
+                    await self.failed_page.close()
+                self.failed_page = None
             self.stage = "opening_tab"
             page = await self.context.new_page()
+            keep_page = False
             tasks = set()
             result = asyncio.get_running_loop().create_future()
 
@@ -158,24 +195,28 @@ class BrowserProvider:
                 await page.goto(self.spec.url, wait_until="domcontentloaded")
                 self.stage = "checking_website"
                 await page_problem(page)
+                self.stage = "waiting_page_load"
+                await page.wait_for_load_state("load")
+                await page_problem(page)
                 # Grok cookie notice is a separate modal from its composer.
                 reject = page.get_by_role("button", name="Reject All", exact=True)
                 if await reject.is_visible():
                     await reject.click()
-                composer = page.locator(self.spec.composer)
-                if not await composer.count():
-                    # Grok exposes an accessible name even when aria-label moves.
-                    composer = (
-                        page.get_by_role("textbox", name="Ask Grok anything", exact=True)
-                        if self.spec.name == "grok"
-                        else composer
-                    )
-                # Missing UI fails explicitly instead of waiting forever on a guessed selector.
-                self.stage = "waiting_page_load"
-                await page.wait_for_load_state("load")
-                if not await composer.count() or not await composer.first.is_visible():
+                self.stage = "finding_composer"
+                composer = await find_composer(page, self.spec)
+                if composer is None:
+                    visible_textareas = await visible_editable(page.locator("textarea"))
+                    self.diagnostics = {
+                        "host": urlparse(page.url).hostname,
+                        "textareas": await page.locator("textarea").count(),
+                        "visible_editable_textareas": len(visible_textareas),
+                        "textboxes": await page.get_by_role("textbox").count(),
+                    }
+                    keep_page = not self.settings.headless
+                    detail = ", ".join(f"{k}={v}" for k, v in self.diagnostics.items())
+                    hint = " Failed browser tab kept open for inspection." if keep_page else ""
                     raise BridgeError(
-                        "Chat composer unavailable; inspect the website or update provider selectors",
+                        f"Chat composer unavailable ({detail}).{hint}",
                         "composer_unavailable",
                         503,
                     )
@@ -186,14 +227,18 @@ class BrowserProvider:
                     await page.locator(self.spec.response).count() if self.spec.response else 0
                 )
                 self.stage = "filling_prompt"
-                await composer.first.fill(prompt)
-                submit = page.locator(self.spec.submit)
-                if not await submit.count() or not await submit.first.is_enabled():
+                await composer.fill(prompt)
+                submit_matches = [
+                    candidate
+                    for candidate in await page.locator(self.spec.submit).all()
+                    if await candidate.is_visible() and await candidate.is_enabled()
+                ]
+                if not submit_matches:
                     raise BridgeError(
                         "Chat submit control is unavailable", "composer_unavailable", 503
                     )
                 self.stage = "submitting_prompt"
-                await submit.first.click()
+                await submit_matches[0].click()
                 if self.stage == "submitting_prompt":
                     self.stage = "waiting_response"
                 if self.spec.name == "grok":
@@ -214,9 +259,12 @@ class BrowserProvider:
                     result.exception()  # Retrieve any exception even if UI failed first.
                 self.stage = "closing_tab"
                 try:
-                    await page.close()
+                    if keep_page:
+                        self.failed_page = page
+                    else:
+                        await page.close()
                 finally:
-                    self.stage = "idle"
+                    self.stage = "inspection_required" if keep_page else "idle"
 
     async def wait_dom_response(self, page, baseline):
         """Experimental DOM adapters require an observed busy -> idle transition."""

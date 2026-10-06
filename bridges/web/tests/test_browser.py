@@ -23,7 +23,7 @@ LANDING = """<!doctype html><html><head><title>Chat fixture</title></head><body>
 };</script></body></html>"""
 
 
-async def prepared(settings, reply="fixture answer", status=200):
+async def prepared(settings, reply="fixture answer", status=200, landing=LANDING):
     provider = BrowserProvider(SPEC, settings.browser)
     await provider.start()
     seen = []
@@ -34,7 +34,7 @@ async def prepared(settings, reply="fixture answer", status=200):
             body = json.dumps({"result": {"response": {"modelResponse": {"message": reply}}}})
             await route.fulfill(status=status, content_type="application/x-ndjson", body=body)
         else:
-            await route.fulfill(content_type="text/html", body=LANDING)
+            await route.fulfill(content_type="text/html", body=landing)
 
     await provider.context.route("**/*", handle)
     return provider, seen
@@ -47,6 +47,47 @@ async def test_real_browser_submission_capture_and_tab_cleanup(settings):
         assert await provider.complete("hello fixture") == "fixture answer"
         assert seen == ["hello fixture"]
         assert len(provider.context.pages) == initial
+    finally:
+        await provider.close()
+
+
+@pytest.mark.parametrize("variant", ["hidden_first", "changed_label"])
+async def test_visible_composer_and_changed_label(settings, variant):
+    landing = LANDING
+    if variant == "hidden_first":
+        landing = landing.replace(
+            '<textarea aria-label="Ask Grok anything">',
+            '<textarea hidden aria-label="Ask Grok anything"></textarea>'
+            '<textarea aria-label="Ask Grok anything">',
+        ).replace("querySelector('textarea')", "querySelector('textarea:not([hidden])')")
+    else:
+        landing = landing.replace('aria-label="Ask Grok anything"', 'aria-label="Chat message"')
+    provider, seen = await prepared(settings, landing=landing)
+    try:
+        assert await provider.complete("visible input") == "fixture answer"
+        assert seen == ["visible input"]
+    finally:
+        await provider.close()
+
+
+async def test_missing_composer_retains_one_inspection_tab(settings):
+    provider, seen = await prepared(settings, landing="<title>Fixture</title><p>No composer</p>")
+    # The context is already launched headlessly; test the headed failure retention policy.
+    settings.browser.headless = False
+    try:
+        initial = len(provider.context.pages)
+        previous = None
+        for _ in range(2):
+            with pytest.raises(BridgeError) as err:
+                await provider.complete("must not be sent")
+            assert err.value.code == "composer_unavailable"
+            assert provider.stage == "inspection_required"
+            assert provider.diagnostics["visible_editable_textareas"] == 0
+            assert len(provider.context.pages) == initial + 1
+            if previous is not None:
+                assert previous.is_closed()
+            previous = provider.failed_page
+        assert not seen
     finally:
         await provider.close()
 

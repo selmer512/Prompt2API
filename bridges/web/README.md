@@ -124,6 +124,10 @@ It prints progress before each request. If it waits, query `/v1/providers` with 
 same bearer key from another terminal: `stage` identifies browser startup, website
 navigation, page loading, prompt entry/submission, or response capture. This status
 contains no prompts, response bodies, URLs, or provider session credentials.
+If the composer is missing, status includes only the page host and input counts.
+With `headless = false`, the failed tab stays open for inspection; the next request
+replaces that tab. The adapter chooses a visible editable input and can tolerate
+a changed Grok textarea label only when the landing page has exactly one candidate.
 
 ## How agent tools work
 

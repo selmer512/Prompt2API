@@ -170,6 +170,7 @@ def create_app(settings: Settings, providers=None):
                     "busy": getattr(p, "lock", asyncio.Lock()).locked(),
                     "browser_started": getattr(p, "context", None) is not None,
                     "stage": getattr(p, "stage", "unknown"),
+                    "diagnostics": getattr(p, "diagnostics", None),
                 }
                 for model, p in providers.items()
             ]
