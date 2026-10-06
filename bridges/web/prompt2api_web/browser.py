@@ -51,6 +51,7 @@ class BrowserProvider:
         self.lock = asyncio.Lock()
         self.context = None
         self.playwright = None
+        self.stage = "idle"
 
     async def start(self):
         if self.context:
@@ -98,7 +99,9 @@ class BrowserProvider:
                 429,
             )
         async with self.lock:
+            self.stage = "starting_browser"
             await self.start()
+            self.stage = "opening_tab"
             page = await self.context.new_page()
             tasks = set()
             result = asyncio.get_running_loop().create_future()
@@ -120,6 +123,7 @@ class BrowserProvider:
                         raise BridgeError(
                             "Grok chat service returned an HTTP error", "upstream_http_error"
                         )
+                    self.stage = "reading_response"
                     answer = decode_response(await response.body())
                     if not result.done():
                         result.set_result(answer)
@@ -150,7 +154,9 @@ class BrowserProvider:
                     )
 
             try:
+                self.stage = "opening_website"
                 await page.goto(self.spec.url, wait_until="domcontentloaded")
+                self.stage = "checking_website"
                 await page_problem(page)
                 # Grok cookie notice is a separate modal from its composer.
                 reject = page.get_by_role("button", name="Reject All", exact=True)
@@ -165,6 +171,7 @@ class BrowserProvider:
                         else composer
                     )
                 # Missing UI fails explicitly instead of waiting forever on a guessed selector.
+                self.stage = "waiting_page_load"
                 await page.wait_for_load_state("load")
                 if not await composer.count() or not await composer.first.is_visible():
                     raise BridgeError(
@@ -178,13 +185,17 @@ class BrowserProvider:
                 baseline = (
                     await page.locator(self.spec.response).count() if self.spec.response else 0
                 )
+                self.stage = "filling_prompt"
                 await composer.first.fill(prompt)
                 submit = page.locator(self.spec.submit)
                 if not await submit.count() or not await submit.first.is_enabled():
                     raise BridgeError(
                         "Chat submit control is unavailable", "composer_unavailable", 503
                     )
+                self.stage = "submitting_prompt"
                 await submit.first.click()
+                if self.stage == "submitting_prompt":
+                    self.stage = "waiting_response"
                 if self.spec.name == "grok":
                     while not result.done():
                         await page_problem(page)
@@ -201,7 +212,11 @@ class BrowserProvider:
                     result.cancel()
                 elif not result.cancelled():
                     result.exception()  # Retrieve any exception even if UI failed first.
-                await page.close()
+                self.stage = "closing_tab"
+                try:
+                    await page.close()
+                finally:
+                    self.stage = "idle"
 
     async def wait_dom_response(self, page, baseline):
         """Experimental DOM adapters require an observed busy -> idle transition."""

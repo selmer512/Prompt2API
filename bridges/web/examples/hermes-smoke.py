@@ -54,6 +54,7 @@ def invoke(choice):
         raise SystemExit(f"Bridge returned HTTP {exc.code}: {exc.read().decode()}") from exc
 
 
+print("[1/2] Asking anonymous Grok to request the fixture tool; waiting for the bridge...", flush=True)
 message = invoke({"type": "function", "function": {"name": "read_fixture"}})
 calls = message.get("tool_calls", [])
 if len(calls) != 1 or calls[0]["function"]["name"] != "read_fixture":
@@ -64,6 +65,7 @@ messages.append(message)
 messages.append(
     {"role": "tool", "tool_call_id": calls[0]["id"], "content": fixture.read_text(encoding="utf-8")}
 )
+print("[2/2] Tool call received and executed; asking Grok to use its result...", flush=True)
 final = invoke("none")
 if final.get("tool_calls") or "ORCHID" not in (final.get("content") or ""):
     raise SystemExit("FAIL: final response did not use the actual tool result")

@@ -120,6 +120,10 @@ The smoke script sends **two chats**: it requires Grok to request a local fixtur
 function, executes that function in the harness, then verifies the next Grok reply
 uses the returned verification word. It executes only that named test function.
 This script tests the live model/protocol boundary; it does not claim to run Hermes.
+It prints progress before each request. If it waits, query `/v1/providers` with the
+same bearer key from another terminal: `stage` identifies browser startup, website
+navigation, page loading, prompt entry/submission, or response capture. This status
+contains no prompts, response bodies, URLs, or provider session credentials.
 
 ## How agent tools work
 

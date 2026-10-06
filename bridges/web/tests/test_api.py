@@ -135,3 +135,40 @@ async def test_disconnect_cancels_generation():
     with pytest.raises(BridgeError):
         await await_connected(task, Disconnected())
     assert task.cancelled() and cancelled.is_set()
+
+
+async def test_status_remains_available_while_generation_waits(settings):
+    entered = asyncio.Event()
+
+    class WaitingProvider(ScriptedProvider):
+        def __init__(self):
+            super().__init__([])
+            self.lock = asyncio.Lock()
+            self.context = object()
+            self.stage = "waiting_response"
+
+        async def complete(self, prompt):
+            async with self.lock:
+                entered.set()
+                await asyncio.Event().wait()
+
+    provider = WaitingProvider()
+    app = create_app(settings, {"grok-web": provider})
+    async with AsyncClient(transport=ASGITransport(app=app), base_url="http://bridge") as client:
+        pending = asyncio.create_task(
+            client.post(
+                "/v1/chat/completions",
+                headers=AUTH,
+                json={"model": "grok-web", "messages": [{"role": "user", "content": "hello"}]},
+            )
+        )
+        try:
+            await entered.wait()
+            assert (await client.get("/v1/providers")).status_code == 401
+            status = (await client.get("/v1/providers", headers=AUTH)).json()["providers"][0]
+            assert status["busy"] and status["browser_started"]
+            assert status["stage"] == "waiting_response"
+        finally:
+            pending.cancel()
+            await asyncio.gather(pending, return_exceptions=True)
+        assert not provider.lock.locked()
