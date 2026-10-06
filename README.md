@@ -1,5 +1,14 @@
 # CLI Proxy API
 
+## Prompt2API browser bridge
+
+This fork adds a modular browser-session inference service for agent harnesses.
+Start with the Grok website adapter; ChatGPT, Claude and Gemini modules are opt-in
+and experimental. Setup, Hermes integration and live tool-loop verification:
+[Web Bridge documentation](bridges/web/README.md). Existing CLIProxyAPI providers
+and Go server behavior are preserved.
+
+
 English | [中文](README_CN.md) | [日本語](README_JA.md)
 
 If you want to use CLIProxyAPI on your desktop, we recommend our [EasyCLIProxyAPI](https://github.com/router-for-me/EasyCLIProxyAPI) desktop client. It provides a graphical configuration UI, automatic updates, system tray integration, and one-click start/stop for the CLIProxyAPI service.
