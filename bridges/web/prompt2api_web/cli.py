@@ -9,8 +9,8 @@ from .providers import SPECS
 from .providers.base import BrowserSettings
 
 
-async def login(args):
-    # User completes ordinary login directly in the local visible browser.
+async def prepare(args):
+    # User reviews website notices directly; Grok can remain signed out.
     provider = BrowserProvider(
         SPECS[args.provider],
         BrowserSettings(
@@ -28,9 +28,13 @@ async def login(args):
             else await provider.context.new_page()
         )
         await page.goto(provider.spec.url, wait_until="domcontentloaded")
-        print(f"Complete sign-in and any website notices in the {args.provider} browser window.")
+        if args.provider == "grok":
+            print("Use Grok signed out. No account or sign-in is required by this bridge.")
+            print("Review any website notices and check that the anonymous chat box is available.")
+        else:
+            print(f"Review website notices and account requirements in the {args.provider} window.")
         print(
-            "The profile is stored locally. Do not run serve/login against the same profile together."
+            "The profile is stored locally. Do not run serve/prepare against the same profile together."
         )
         await asyncio.to_thread(input, "Press Enter here when finished: ")
     finally:
@@ -42,14 +46,16 @@ def main():
     sub = parser.add_subparsers(dest="command", required=True)
     serve = sub.add_parser("serve")
     serve.add_argument("--config")
-    auth = sub.add_parser("login")
+    auth = sub.add_parser(
+        "prepare", aliases=["login"], help="Open the website for setup; Grok can stay signed out"
+    )
     auth.add_argument("provider", choices=list(SPECS))
     auth.add_argument("--profile-root", default="~/.prompt2api-web/profiles")
     auth.add_argument("--channel", help="Use an installed browser channel, e.g. chrome")
     auth.add_argument("--executable-path", help="Path to a locally installed Chromium browser")
     args = parser.parse_args()
-    if args.command == "login":
-        asyncio.run(login(args))
+    if args.command in ("prepare", "login"):
+        asyncio.run(prepare(args))
     else:
         import uvicorn
 

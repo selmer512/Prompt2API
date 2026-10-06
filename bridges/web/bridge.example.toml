@@ -6,7 +6,7 @@ port = 8320
 [browser]
 profile_root = "~/.prompt2api-web/profiles"
 headless = true
-# channel = "chrome" # installed Chrome; also pass --channel chrome to login
+# channel = "chrome" # installed Chrome; also pass --channel chrome to prepare
 max_prompt_chars = 200000
 
 [providers.grok]

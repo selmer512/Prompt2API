@@ -31,30 +31,37 @@ python -m playwright install chromium
 # python -m playwright install-deps chromium
 
 cp bridges/web/bridge.example.toml bridges/web/bridge.toml
-prompt2api-web login grok
+# Optional: review website notices in a visible browser while staying signed out.
+prompt2api-web prepare grok
 ```
 
-The login command opens a visible browser. Complete sign-in if required and review
-any website notices yourself, then press Enter in the terminal. Anonymous chat may
-work where Grok offers it, but its availability and quota follow the website.
-Browser session data stays under `~/.prompt2api-web/profiles/grok`. The service
-never asks you to paste cookies or provider passwords into configuration.
+Grok uses the website's anonymous chat path: **no Grok account or sign-in is
+required by the bridge**. You can skip `prepare` and start the service directly.
+The optional `prepare` command opens a visible browser to review website notices
+and confirm the anonymous chat box is available. Stay signed out, then press Enter
+in the terminal. Anonymous inference still requires a live test; availability and
+quota follow the website. If Grok requires an account for your session, the bridge
+reports that error rather than asking you to sign in automatically.
+Browser session data stays under `~/.prompt2api-web/profiles/grok`; a profile also
+stores anonymous site state and does not imply a logged-in account. The service
+never asks you to paste cookies or provider passwords into configuration. `login`
+remains an alias of `prepare` for compatibility with earlier instructions.
 
-WSL needs WSLg or another display for the one-time visible login. Alternatively,
+WSL needs WSLg or another display for optional visible setup. Alternatively,
 run the bridge natively on Windows using Python and installed Chrome:
 
 ```powershell
 py -m venv .venv
 .\.venv\Scripts\python.exe -m pip install -e 'bridges/web[test]'
-.\.venv\Scripts\prompt2api-web.exe login grok --channel chrome
+.\.venv\Scripts\prompt2api-web.exe prepare grok --channel chrome
 ```
 
 For a custom Chromium binary, set `executable_path` under `[browser]` and pass the
-same path as `--executable-path` to login. Tests can use `PROMPT2API_TEST_BROWSER`
+same path as `--executable-path` to prepare. Tests can use `PROMPT2API_TEST_BROWSER`
 to select an installed binary instead of Playwright's bundled Chromium.
 
 For installed Chrome, set `channel = "chrome"` in the `[browser]` section. Use the
-same profile root for login and serve. Do not run two processes against one profile.
+same profile root for prepare and serve. Do not run two processes against one profile.
 To observe requests locally, set `headless = false` before starting the service.
 
 Set a random client bearer key and start the bridge:
@@ -73,7 +80,7 @@ $env:PROMPT2API_WEB_KEY = & .\.venv\Scripts\python.exe -c 'import secrets; print
 
 Use the same key in your client. Default listener: `127.0.0.1:8320`. The key belongs
 to **your bridge**, not xAI. Browser launch is lazy; `/healthz` is liveness, not proof
-that a provider is signed in or can complete inference. Model listings explicitly
+that a provider can complete inference. Model listings explicitly
 mark account readiness as unchecked.
 
 ## Connect Hermes

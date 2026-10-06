@@ -14,7 +14,9 @@ async def page_problem(page):
     # Examine visible UI only; never log or persist body text.
     if urlparse(page.url).path.startswith(("/sign-in", "/login", "/auth")):
         raise BridgeError(
-            "Provider sign-in is required; run the login command", "authentication_required", 401
+            "Website requires an account for this session; anonymous chat is unavailable",
+            "authentication_required",
+            401,
         )
     checks = [
         (
@@ -166,7 +168,7 @@ class BrowserProvider:
                 await page.wait_for_load_state("load")
                 if not await composer.count() or not await composer.first.is_visible():
                     raise BridgeError(
-                        "Chat composer unavailable; sign in or update provider selectors",
+                        "Chat composer unavailable; inspect the website or update provider selectors",
                         "composer_unavailable",
                         503,
                     )
