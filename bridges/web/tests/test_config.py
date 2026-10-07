@@ -1,4 +1,5 @@
 import pytest
+
 from prompt2api_web.config import load_settings
 
 

@@ -128,6 +128,18 @@ If the composer is missing, status includes only the page host and input counts.
 With `headless = false`, the failed tab stays open for inspection; the next request
 replaces that tab. The adapter chooses a visible editable input and can tolerate
 a changed Grok textarea label only when the landing page has exactly one candidate.
+For SSH/Termius, set `headless = true` to run without a desktop window. The same
+status endpoint reports whether a chat request and response were observed, plus
+the latest eight Grok REST POST route shapes and HTTP statuses. Conversation IDs,
+unknown path segments, query strings, headers, and request/response bodies are
+excluded. A click alone does not prove the site submitted a chat request.
+The adapter reports Grok's visible service-issues notice as
+`upstream_service_unavailable`. A visible continuation/signup panel is reported as
+`anonymous_session_unavailable` only when there is no editable guest composer.
+Neither error triggers login or bypasses the website's access controls. Anonymous
+access must actually be available in the browser for inference to succeed.
+For streaming calls, HTTP 200 means the SSE stream opened; a later error event can
+still report website failure before any model output arrives.
 
 ## How agent tools work
 

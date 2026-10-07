@@ -21,7 +21,7 @@ def is_chat_response(url: str) -> bool:
         parsed.path == "/rest/app-chat/conversations/new"
         or (
             parsed.path.startswith("/rest/app-chat/conversations/")
-            and parsed.path.endswith("/responses")
+            and parsed.path.endswith(("/responses", "/model-responses"))
         )
     )
 

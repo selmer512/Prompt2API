@@ -1,6 +1,7 @@
 import os
 
 import pytest
+
 from prompt2api_web.config import Settings
 from prompt2api_web.providers.base import BrowserSettings
 from prompt2api_web.providers.grok import SPEC

@@ -9,6 +9,48 @@ from .errors import BridgeError
 from .providers.base import BrowserSettings, ProviderSpec
 from .providers.grok import decode_response, is_chat_response
 
+GROK_SERVICE_NOTICE = (
+    "Grok is experiencing issues. We are working on restoring service as quickly as possible."
+)
+
+
+async def any_visible(locator):
+    for candidate in await locator.all():
+        if await candidate.is_visible():
+            return True
+    return False
+
+
+def diagnostic_route(url):
+    """Expose route shapes only, never query strings or session/conversation IDs."""
+    parsed = urlparse(url)
+    if parsed.hostname != "grok.com" or not parsed.path.startswith("/rest/"):
+        return None
+    public_segments = {
+        "rest",
+        "app-chat",
+        "anon-chat",
+        "guest-chat",
+        "anonymous",
+        "conversations",
+        "new",
+        "responses",
+        "model-responses",
+        "user-responses",
+        "chat",
+        "stream",
+        "completions",
+        "create",
+        "temporary",
+        "challenge",
+        "verify",
+        "check",
+    }
+    return "/".join(
+        part if not part or part in public_segments else "{segment}"
+        for part in parsed.path.split("/")
+    )
+
 
 async def page_problem(page):
     # Examine visible UI only; never log or persist body text.
@@ -35,7 +77,10 @@ async def page_problem(page):
         ),
     ]
     # Scope to dialogs/alerts and challenge pages; assistant text may discuss these words.
-    alerts = await page.locator('[role="alert"], [role="dialog"]').all_text_contents()
+    alerts = []
+    for candidate in await page.locator('[role="alert"], [role="dialog"], [role="status"]').all():
+        if await candidate.is_visible():
+            alerts.append(await candidate.inner_text())
     if any(urlparse(frame.url).hostname == "challenges.cloudflare.com" for frame in page.frames):
         raise BridgeError("Website requires human verification", "verification_required", 403)
     title = await page.title()
@@ -43,6 +88,28 @@ async def page_problem(page):
     for pattern, message, code, status in checks:
         if re.search(pattern, text, re.I | re.S):
             raise BridgeError(message, code, status)
+    if urlparse(page.url).hostname == "grok.com":
+        # Match website controls, rather than searching the serialized conversation.
+        if await any_visible(page.get_by_text(GROK_SERVICE_NOTICE, exact=True)):
+            raise BridgeError(
+                "Grok reports service issues; retry when the website is available",
+                "upstream_service_unavailable",
+                503,
+            )
+        continuation = await any_visible(page.get_by_text("Continue your conversation", exact=True))
+        signup = await any_visible(page.get_by_role("button", name="Sign up for free", exact=True))
+        signup = signup or await any_visible(
+            page.get_by_role("link", name="Sign up for free", exact=True)
+        )
+        if continuation and signup:
+            editors = await visible_editable(page.locator('textarea, [role="textbox"]'))
+            if not editors:
+                raise BridgeError(
+                    "Grok offers signup instead of an editable guest composer in this session; "
+                    "anonymous continuation is unavailable",
+                    "anonymous_session_unavailable",
+                    403,
+                )
 
 
 async def visible_editable(locator):
@@ -142,6 +209,29 @@ class BrowserProvider:
             keep_page = False
             tasks = set()
             result = asyncio.get_running_loop().create_future()
+            network_rows = {}
+            if self.spec.name == "grok":
+                self.diagnostics = {
+                    "chat_request_seen": False,
+                    "chat_response_seen": False,
+                    "rest_posts": [],
+                }
+
+            def on_request(request):
+                route = diagnostic_route(request.url)
+                if request.method != "POST" or route is None:
+                    return
+                row = {"route": route, "status": None, "failed": False}
+                rows = self.diagnostics["rest_posts"]
+                rows.append(row)
+                if len(rows) > 8:
+                    rows.pop(0)
+                network_rows[id(request)] = row
+                # Bound event bookkeeping along with the displayed diagnostics.
+                if len(network_rows) > 32:
+                    network_rows.pop(next(iter(network_rows)))
+                if is_chat_response(request.url):
+                    self.diagnostics["chat_request_seen"] = True
 
             async def capture(response):
                 try:
@@ -179,12 +269,19 @@ class BrowserProvider:
                         )
 
             def on_response(response):
+                row = network_rows.get(id(response.request))
+                if row is not None:
+                    row["status"] = response.status
                 if is_chat_response(response.url) and response.request.method == "POST":
+                    self.diagnostics["chat_response_seen"] = True
                     task = asyncio.create_task(capture(response))
                     tasks.add(task)
                     task.add_done_callback(tasks.discard)
 
             def on_failed(request):
+                row = network_rows.get(id(request))
+                if row is not None:
+                    row["failed"] = True
                 if is_chat_response(request.url) and request.method == "POST" and not result.done():
                     result.set_exception(
                         BridgeError("Grok chat connection failed", "upstream_connection_error")
@@ -221,6 +318,7 @@ class BrowserProvider:
                         503,
                     )
                 if self.spec.name == "grok":
+                    page.on("request", on_request)
                     page.on("response", on_response)
                     page.on("requestfailed", on_failed)
                 baseline = (

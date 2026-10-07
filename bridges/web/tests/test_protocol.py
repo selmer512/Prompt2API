@@ -1,10 +1,11 @@
 import json
 
 import pytest
+from pydantic import ValidationError
+
 from prompt2api_web.errors import BridgeError
 from prompt2api_web.protocol import ChatRequest, build_prompt, parse_reply
 from prompt2api_web.providers.grok import decode_response, is_chat_response
-from pydantic import ValidationError
 
 
 def request(tool, **kwargs):
@@ -121,5 +122,22 @@ def test_grok_final_message_excludes_thinking_tokens():
 def test_capture_only_chat_response():
     assert is_chat_response("https://grok.com/rest/app-chat/conversations/new")
     assert is_chat_response("https://grok.com/rest/app-chat/conversations/123/responses")
+    assert is_chat_response("https://grok.com/rest/app-chat/conversations/123/model-responses")
+    assert not is_chat_response("https://grok.com/rest/app-chat/conversations/123/user-responses")
     assert not is_chat_response("https://grok.com.evil/rest/app-chat/conversations/new")
     assert not is_chat_response("https://grok.com/rest/user-settings")
+
+
+def test_route_diagnostics_omit_credentials_and_conversation_ids():
+    from prompt2api_web.browser import diagnostic_route
+
+    assert (
+        diagnostic_route(
+            "https://grok.com/rest/app-chat/conversations/private-conversation-id/model-responses"
+            "?token=private-key"
+        )
+        == "/rest/app-chat/conversations/{segment}/model-responses"
+    )
+    assert diagnostic_route("https://grok.com/rest/private-account-name") == "/rest/{segment}"
+    assert diagnostic_route("https://other.example/rest/private-key") is None
+    assert diagnostic_route("https://grok.com/profile/private-account-name") is None
