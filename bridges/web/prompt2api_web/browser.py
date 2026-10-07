@@ -324,6 +324,9 @@ class BrowserProvider:
                 baseline = (
                     await page.locator(self.spec.response).count() if self.spec.response else 0
                 )
+                completed_baseline = (
+                    await page.locator(self.spec.finished).count() if self.spec.finished else 0
+                )
                 self.stage = "filling_prompt"
                 await composer.fill(prompt)
                 submit_matches = [
@@ -344,7 +347,7 @@ class BrowserProvider:
                         await page_problem(page)
                         await asyncio.sleep(0.25)
                     return result.result()
-                return await self.wait_dom_response(page, baseline)
+                return await self.wait_dom_response(page, baseline, completed_baseline)
             finally:
                 # Cancellation closes only this request's tab, interrupting the web generation.
                 for task in tasks:
@@ -364,17 +367,41 @@ class BrowserProvider:
                 finally:
                     self.stage = "inspection_required" if keep_page else "idle"
 
-    async def wait_dom_response(self, page, baseline):
-        """Experimental DOM adapters require an observed busy -> idle transition."""
+    async def wait_dom_response(self, page, baseline, completed_baseline=0):
+        """Require generation to settle, or a new provider completion control to appear."""
         saw_busy = False
         while True:
             await page_problem(page)
-            busy = page.locator(self.spec.busy)
-            generating = await busy.count() > 0 and await busy.last.is_visible()
+            generating = await any_visible(page.locator(self.spec.busy))
+            self.stage = "reading_response" if generating else "waiting_response"
             saw_busy = saw_busy or generating
             replies = page.locator(self.spec.response)
-            if saw_busy and not generating and await replies.count() > baseline:
-                text = await replies.last.inner_text()
+            completed = False
+            completed_count = 0
+            if self.spec.finished:
+                controls = page.locator(self.spec.finished)
+                completed_count = await controls.count()
+                completed = completed_count > completed_baseline and await any_visible(controls)
+            self.diagnostics = {
+                "response_nodes": await replies.count(),
+                "busy_visible": generating,
+                "generation_seen": saw_busy,
+                "completion_controls": completed_count,
+            }
+            if (saw_busy or completed) and not generating and await replies.count() > baseline:
+                reply = replies.last
+                if not await reply.is_visible():
+                    await asyncio.sleep(0.25)
+                    continue
+                content = (
+                    reply.locator(self.spec.response_content)
+                    if self.spec.response_content
+                    else None
+                )
+                if content is not None and await content.count():
+                    text = "\n".join([await node.inner_text() for node in await content.all()])
+                else:
+                    text = await reply.inner_text()
                 if text.strip():
                     return text
             await asyncio.sleep(0.25)

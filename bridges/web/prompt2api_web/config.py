@@ -40,7 +40,8 @@ def load_settings(path: str | None = None) -> Settings:
                 f"{name} requires allow_experimental=true and local selector validation"
             )
         # URLs and model identity are fixed per module, not supplied by downstream clients.
-        overrides = {k: entry[k] for k in ("composer", "submit", "response", "busy") if k in entry}
+        selectors = ("composer", "submit", "response", "busy", "finished", "response_content")
+        overrides = {k: entry[k] for k in selectors if k in entry}
         providers.append(replace(spec, **overrides))
     if not providers:
         raise ValueError("Enable at least one provider")

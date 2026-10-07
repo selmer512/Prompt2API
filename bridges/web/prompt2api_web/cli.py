@@ -28,8 +28,10 @@ async def prepare(args):
             else await provider.context.new_page()
         )
         await page.goto(provider.spec.url, wait_until="domcontentloaded")
-        if args.provider == "grok":
-            print("Use Grok signed out. No account or sign-in is required by this bridge.")
+        if args.provider in ("grok", "chatgpt"):
+            print(
+                f"Use {args.provider} signed out. No account or sign-in is required by this bridge."
+            )
             print("Review any website notices and check that the anonymous chat box is available.")
         else:
             print(f"Review website notices and account requirements in the {args.provider} window.")
@@ -47,7 +49,9 @@ def main():
     serve = sub.add_parser("serve")
     serve.add_argument("--config")
     auth = sub.add_parser(
-        "prepare", aliases=["login"], help="Open the website for setup; Grok can stay signed out"
+        "prepare",
+        aliases=["login"],
+        help="Open the website for setup; Grok/ChatGPT can stay signed out",
     )
     auth.add_argument("provider", choices=list(SPECS))
     auth.add_argument("--profile-root", default="~/.prompt2api-web/profiles")

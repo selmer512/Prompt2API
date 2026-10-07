@@ -8,8 +8,8 @@ proxy; it can be used directly or configured as an upstream for that proxy.
 
 | Module | Route | Transport | Status |
 | --- | --- | --- | --- |
-| Grok | `grok-web` | Browser UI submission + completed website response capture | First implementation; composer inspected live, inference still needs a live account test |
-| ChatGPT | `chatgpt-web` | Browser UI + DOM response extraction | Experimental, disabled; selectors not verified live |
+| Grok | `grok-web` | Browser UI submission + completed website response capture | Composer inspected live; anonymous inference not yet verified |
+| ChatGPT | `chatgpt-web` | Browser UI + DOM response extraction | Guest composer/send inspected live; response extraction experimental |
 | Claude | `claude-web` | Browser UI + DOM response extraction | Experimental, disabled; selectors not verified live |
 | Gemini | `gemini-web` | Browser UI + DOM response extraction | Experimental, disabled; selectors not verified live |
 
@@ -79,9 +79,42 @@ $env:PROMPT2API_WEB_KEY = & .\.venv\Scripts\python.exe -c 'import secrets; print
 ```
 
 Use the same key in your client. Default listener: `127.0.0.1:8320`. The key belongs
-to **your bridge**, not xAI. Browser launch is lazy; `/healthz` is liveness, not proof
+to **your bridge**, not an AI provider. Browser launch is lazy; `/healthz` is liveness, not proof
 that a provider can complete inference. Model listings explicitly
 mark account readiness as unchecked.
+
+## Try signed-out ChatGPT
+
+Use the supplied ChatGPT-only config. It listens on **8321**, so an existing Grok
+bridge on 8320 can keep running. It uses a separate `chatgpt` browser profile.
+No OpenAI API key or ChatGPT login step is requested by this adapter. Website
+guest access and quota still apply; a guest composer is not proof of inference.
+The route remains experimental until a live response and tool loop are verified.
+
+From the repository root, using your existing environment and client key:
+
+```bash
+export PROMPT2API_WEB_KEY="$(cat "$HOME/.config/prompt2api-web/client-key")"
+.venv/bin/prompt2api-web serve --config bridges/web/bridge.chatgpt.toml
+```
+
+If your Grok config sets `channel` or `executable_path`, copy that browser setting
+into `bridge.chatgpt.toml` before starting. Otherwise the bundled Playwright
+Chromium is used. Optional visible setup is `prompt2api-web prepare chatgpt`;
+stay signed out and review the website notices yourself.
+
+In another terminal, test the actual provider before starting a large agent prompt:
+
+```bash
+export PROMPT2API_WEB_KEY="$(cat "$HOME/.config/prompt2api-web/client-key")"
+.venv/bin/python bridges/web/examples/hermes-smoke.py \
+  --model chatgpt-web --base-url http://127.0.0.1:8321/v1
+```
+
+After the smoke test passes, configure Hermes's custom endpoint with model
+`chatgpt-web`, URL `http://127.0.0.1:8321/v1`, and the same local client key.
+This smoke test exercises a small two-request function/result loop; it does not
+claim to validate Hermes's complete tool catalog or an unlimited guest allowance.
 
 ## Connect Hermes
 
@@ -158,9 +191,12 @@ The model may fail to follow them; the client harness retains control of tool ex
 
 Grok response parsing consumes the final `modelResponse.message` in the browser's
 own completed NDJSON response, not reasoning/search token fragments. No standalone
-requests are replayed against private endpoints. ChatGPT/Claude/Gemini currently
-use DOM extraction and require an observed generation-busy to idle transition;
-validate selectors locally before enabling those modules.
+requests are replayed against private endpoints. DOM providers require an observed
+generation-busy to idle transition. ChatGPT also accepts a newly appeared completion
+control when a fast reply finishes before the stop button is observed. Output is
+read from the assistant's Markdown container where available. Text merely remaining
+unchanged does not prove completion. Validate response selectors against your session;
+the signed-out composer and Send button were inspected separately from inference.
 
 ## API and limits
 
@@ -191,7 +227,8 @@ validate selectors locally before enabling those modules.
 
 Each module exports a `ProviderSpec` in `prompt2api_web/providers/`; add it to `SPECS`
 and configure it in TOML. For experimental providers, set both `enabled = true` and
-`allow_experimental = true`. Override `composer`, `submit`, `response`, and `busy`
+`allow_experimental = true`. Override `composer`, `submit`, `response`, `busy`,
+`finished`, and `response_content`
 selectors in that provider's section when its UI changes. URLs are fixed by modules.
 No experimental route appears in `/v1/models` unless explicitly enabled.
 

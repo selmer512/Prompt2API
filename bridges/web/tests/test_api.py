@@ -6,6 +6,7 @@ from httpx import ASGITransport, AsyncClient
 
 from prompt2api_web.app import await_connected, create_app
 from prompt2api_web.errors import BridgeError
+from prompt2api_web.providers.chatgpt import SPEC as CHATGPT_SPEC
 from prompt2api_web.providers.grok import SPEC
 
 AUTH = {"Authorization": "Bearer test-key"}
@@ -29,17 +30,20 @@ class ScriptedProvider:
         pass
 
 
-async def test_api_harness_tool_loop(settings, tool):
+@pytest.mark.parametrize("spec", [SPEC, CHATGPT_SPEC], ids=["grok", "chatgpt"])
+async def test_api_harness_tool_loop(settings, tool, spec):
     provider = ScriptedProvider(
         [
             '{"content":null,"tool_calls":[{"name":"read_file","arguments":{"path":"app.py"}}]}',
             '{"content":"Verified hello","tool_calls":[]}',
         ]
     )
-    app = create_app(settings, {"grok-web": provider})
+    provider.spec = spec
+    settings.providers = [spec]
+    app = create_app(settings, {spec.model: provider})
     async with AsyncClient(transport=ASGITransport(app=app), base_url="http://bridge") as client:
         first = {
-            "model": "grok-web",
+            "model": spec.model,
             "messages": [{"role": "user", "content": "Read app.py"}],
             "tools": [tool],
         }

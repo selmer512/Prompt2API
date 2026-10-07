@@ -10,6 +10,7 @@ import pytest
 
 from prompt2api_web.browser import BrowserProvider
 from prompt2api_web.errors import BridgeError
+from prompt2api_web.providers.chatgpt import SPEC as CHATGPT_SPEC
 from prompt2api_web.providers.grok import SPEC
 
 pytestmark = pytest.mark.browser
@@ -149,5 +150,37 @@ async def test_verification_page_is_not_retried(settings):
             await provider.complete("hello")
         assert err.value.code == "verification_required"
         assert len(hits) == 1
+    finally:
+        await provider.close()
+
+
+CHATGPT_LANDING = """<!doctype html><title>ChatGPT fixture</title>
+<textarea aria-label="Chat with ChatGPT"></textarea>
+<button aria-label="Send message">Send</button>
+<script>document.querySelector('button').onclick = () => {
+ const output = document.createElement('div');
+ output.setAttribute('data-message-author-role','assistant');
+ const body = document.createElement('div'); body.className='markdown';
+ body.textContent='{"content":"fixture complete","tool_calls":[]}'; output.append(body);
+ document.body.append(output);
+ const copy = document.createElement('button'); copy.setAttribute('aria-label','Copy response');
+ copy.textContent='Copy'; document.body.append(copy);
+};</script>"""
+
+
+async def test_chatgpt_guest_composer_and_fast_response(settings):
+    provider = BrowserProvider(CHATGPT_SPEC, settings.browser)
+    await provider.start()
+    await provider.context.route(
+        "**/*", lambda route: route.fulfill(content_type="text/html", body=CHATGPT_LANDING)
+    )
+    try:
+        initial = len(provider.context.pages)
+        assert (
+            await provider.complete("fixture prompt")
+            == '{"content":"fixture complete","tool_calls":[]}'
+        )
+        assert len(provider.context.pages) == initial
+        assert not provider.lock.locked()
     finally:
         await provider.close()

@@ -1,3 +1,5 @@
+from pathlib import Path
+
 import pytest
 
 from prompt2api_web.config import load_settings
@@ -26,3 +28,12 @@ def test_provider_opt_in_and_profile_isolation(monkeypatch, tmp_path):
     assert settings.providers[0].composer == "local-selector"
     assert settings.providers[0].url == "https://chatgpt.com/"
     assert len({settings.browser.profile_root / p.name for p in settings.providers}) == 2
+
+
+def test_chatgpt_example_runs_on_separate_port(monkeypatch):
+    monkeypatch.setenv("PROMPT2API_WEB_KEY", "test-key")
+    example = Path(__file__).parents[1] / "bridge.chatgpt.toml"
+    settings = load_settings(str(example))
+    assert settings.host == "127.0.0.1" and settings.port == 8321
+    assert [p.model for p in settings.providers] == ["chatgpt-web"]
+    assert settings.browser.profile_root / "chatgpt" != settings.browser.profile_root / "grok"

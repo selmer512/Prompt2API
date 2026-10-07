@@ -15,6 +15,8 @@ class ProviderSpec:
     response: str = ""
     busy: str = ""
     experimental: bool = False
+    finished: str = ""
+    response_content: str = ""
 
 
 @dataclass
