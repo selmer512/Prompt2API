@@ -1,0 +1,18 @@
+# Separate port so an existing Grok bridge does not need to be stopped.
+# The bearer key authenticates local clients, not an OpenAI account.
+[server]
+host = "127.0.0.1"
+port = 8321
+
+[browser]
+profile_root = "~/.prompt2api-web/profiles"
+headless = true
+max_prompt_chars = 200000
+# Copy channel or executable_path from your existing bridge config if needed.
+
+[providers.chatgpt]
+enabled = true
+allow_experimental = true
+
+[providers.grok]
+enabled = false

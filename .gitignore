@@ -67,3 +67,13 @@ docker-compose.override.yml
 
 # Local LLM Wiki vault
 .llm-wiki
+
+# Prompt2API browser bridge runtime and private browser profiles
+.venv/
+__pycache__/
+*.pyc
+*.egg-info/
+.pytest_cache/
+.ruff_cache/
+bridges/web/profiles/
+bridges/web/bridge.toml

@@ -1,0 +1,26 @@
+# Client bearer key comes from PROMPT2API_WEB_KEY, never provider credentials.
+[server]
+host = "127.0.0.1"
+port = 8320
+
+[browser]
+profile_root = "~/.prompt2api-web/profiles"
+headless = true
+# channel = "chrome" # installed Chrome; also pass --channel chrome to prepare
+max_prompt_chars = 200000
+
+[providers.grok]
+enabled = true
+# Uses the site's selected/default model. grok-web is a route, not a Grok version.
+
+[providers.chatgpt]
+enabled = false
+allow_experimental = false
+
+[providers.claude]
+enabled = false
+allow_experimental = false
+
+[providers.gemini]
+enabled = false
+allow_experimental = false

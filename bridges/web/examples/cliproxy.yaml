@@ -1,0 +1,20 @@
+# Standalone v8 config routing the existing Go proxy to the local browser bridge.
+# Copy to config.yaml and replace both client keys. Bind both services locally.
+config-version: 8
+server:
+  host: "127.0.0.1"
+  port: 8317
+access:
+  api-keys:
+    - "REPLACE_PROXY_CLIENT_KEY"
+api-keys:
+  openai-compatibility:
+    - name: "prompt2api-web"
+      base-url: "http://127.0.0.1:8320/v1"
+      request-retry: 0 # A repeated web submission spends quota and may duplicate actions.
+      keys:
+        - api-key: "REPLACE_WITH_PROMPT2API_WEB_KEY"
+      models:
+        - name: "grok-web"
+          alias: "grok-web"
+          display-name: "Grok Website (browser bridge)"
